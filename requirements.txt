@@ -1,0 +1,4 @@
+# Python packages this project needs.
+# Install them with:  pip install -r requirements.txt
+# (More will be added each day, one at a time.)
+pypdf==7.0.1        # reads text out of PDF files

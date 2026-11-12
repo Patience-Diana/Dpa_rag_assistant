@@ -1,0 +1,21 @@
+# --- Secrets: NEVER commit these ---
+.env
+
+# --- Python virtual environment and cache files ---
+.venv/
+__pycache__/
+*.pyc
+
+# --- Data ---
+# Raw PDFs stay out of git (they can be large, and anyone can download
+# them from the public source links listed in the README).
+data/raw/*
+!data/raw/.gitkeep
+
+# Vector database files (rebuilt by src/index.py, so no need to commit)
+chroma_db/
+
+# --- Editor / OS clutter ---
+.DS_Store
+.vscode/
+.idea/
