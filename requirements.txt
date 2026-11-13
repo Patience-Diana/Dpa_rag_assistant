@@ -2,3 +2,5 @@
 # Install them with:  pip install -r requirements.txt
 # (More will be added each day, one at a time.)
 pypdf==7.0.1        # reads text out of PDF files
+sentence-transformers==6.3.0   # turns text into embeddings (vectors of numbers)
+chromadb==1.5.9                # local vector database to store and search embeddings
