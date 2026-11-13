@@ -4,3 +4,5 @@
 pypdf==7.0.1        # reads text out of PDF files
 sentence-transformers==6.3.0   # turns text into embeddings (vectors of numbers)
 chromadb==1.5.9                # local vector database to store and search embeddings
+anthropic==2.8.0               # official library for calling Claude
+python-dotenv==1.2.4           # loads the API key from the .env file
