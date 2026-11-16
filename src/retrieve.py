@@ -18,7 +18,8 @@ import sys
 import chromadb
 from sentence_transformers import SentenceTransformer
 
-from config import CHROMA_DIR, COLLECTION_NAME, EMBEDDING_MODEL
+from config import (CHROMA_DIR, DEFAULT_CHUNK_SIZE, EMBEDDING_MODEL,
+                    collection_name)
 
 # The bge model works better when a short instruction is put in front of
 # QUESTIONS (not in front of the chunks). This is recommended by its authors.
@@ -27,25 +28,28 @@ QUERY_INSTRUCTION = "Represent this sentence for searching relevant passages: "
 # How many chunks to return by default.
 DEFAULT_TOP_K = 3
 
-# Loading the model takes a few seconds, so we load it (and open the
-# database) only once, the first time retrieve() is called, then reuse them.
+# Loading the model takes a few seconds, so we load it only once, the first
+# time retrieve() is called, then reuse it. Opened collections are kept in a
+# dictionary (one per chunk size) for the same reason.
 _model = None
-_collection = None
+_collections = {}
 
 
-def _load():
-    """Load the embedding model and open the ChromaDB collection (once)."""
-    global _model, _collection
+def _load(chunk_size):
+    """Load the embedding model (once) and open the collection for this chunk size."""
+    global _model
     if _model is None:
         _model = SentenceTransformer(EMBEDDING_MODEL)
+    if chunk_size not in _collections:
         client = chromadb.PersistentClient(path=CHROMA_DIR)
-        _collection = client.get_collection(COLLECTION_NAME)
-    return _model, _collection
+        _collections[chunk_size] = client.get_collection(collection_name(chunk_size))
+    return _model, _collections[chunk_size]
 
 
-def retrieve(question, top_k=DEFAULT_TOP_K):
+def retrieve(question, top_k=DEFAULT_TOP_K, chunk_size=DEFAULT_CHUNK_SIZE):
     """
-    Return the top_k chunks most similar to the question.
+    Return the top_k chunks most similar to the question, searching the
+    collection built for `chunk_size` (default 300-word chunks).
 
     Each result is a dictionary like:
       {"chunk_id": "s26-c1", "section_number": "26",
@@ -54,7 +58,7 @@ def retrieve(question, top_k=DEFAULT_TOP_K):
 
     score is the cosine similarity: closer to 1 means a closer match.
     """
-    model, collection = _load()
+    model, collection = _load(chunk_size)
 
     # Embed the question the same way the chunks were embedded.
     query_embedding = model.encode(QUERY_INSTRUCTION + question,

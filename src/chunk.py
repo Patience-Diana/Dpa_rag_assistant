@@ -8,31 +8,32 @@ fit easily into the prompt we send to Claude.
 What it does:
   1. Reads data/processed/dpa_clean.txt (made by ingest.py)
   2. Splits it into sections, using headings like "29. Duty to notify"
-  3. Cuts long sections into overlapping chunks of about CHUNK_SIZE words
+  3. Cuts long sections into overlapping chunks of about --size words
   4. Labels every chunk with its section number, section title and Part
-  5. Saves all chunks to data/processed/chunks.json and prints a few samples
+  5. Saves all chunks to data/processed/chunks_<size>.json and prints samples
 
 Run it from the project root with:
-    python src/chunk.py
+    python src/chunk.py               # default: 300-word chunks
+    python src/chunk.py --size 150    # 150-word chunks (overlap 25)
 """
 
+import argparse
 import json
 import re
 from pathlib import Path
+
+from config import DEFAULT_CHUNK_SIZE, chunks_path, default_overlap
 
 # ---------------------------------------------------------------------------
 # Settings
 # ---------------------------------------------------------------------------
 
 INPUT_PATH = Path("data/processed/dpa_clean.txt")
-OUTPUT_PATH = Path("data/processed/chunks.json")
 
-# How many words go in each chunk, and how many words each chunk shares
-# with the one before it. The overlap makes sure a sentence that falls on a
-# chunk boundary still appears whole in at least one chunk.
-# (On Day 4 we'll try a different CHUNK_SIZE and compare the results.)
-CHUNK_SIZE = 300
-CHUNK_OVERLAP = 50
+# The chunk size (words per chunk) and overlap (words each chunk shares with
+# the one before it) are chosen on the command line; see main() below.
+# The overlap makes sure a sentence that falls on a chunk boundary still
+# appears whole in at least one chunk.
 
 # --- Patterns ("regular expressions") for the headings we look for ---
 # A section heading is a whole line like "29. Duty to notify".
@@ -140,7 +141,7 @@ def split_into_chunks(words, size, overlap):
     return chunks
 
 
-def make_chunks(sections, size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
+def make_chunks(sections, size, overlap):
     """Turn every section into one or more labelled chunks."""
     all_chunks = []
     for s in sections:
@@ -167,21 +168,32 @@ def make_chunks(sections, size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
 
 
 def main():
+    # Read the chunk size (and optional overlap) from the command line.
+    parser = argparse.ArgumentParser(description="Split the Act into chunks.")
+    parser.add_argument("--size", type=int, default=DEFAULT_CHUNK_SIZE,
+                        help="words per chunk (default 300)")
+    parser.add_argument("--overlap", type=int, default=None,
+                        help="words shared between chunks (default: size / 6)")
+    args = parser.parse_args()
+    size = args.size
+    overlap = args.overlap if args.overlap is not None else default_overlap(size)
+    output_path = chunks_path(size)
+
     text = INPUT_PATH.read_text(encoding="utf-8")
 
     sections = split_into_sections(text)
-    chunks = make_chunks(sections)
+    chunks = make_chunks(sections, size, overlap)
 
-    OUTPUT_PATH.write_text(json.dumps(chunks, indent=2, ensure_ascii=False),
+    output_path.write_text(json.dumps(chunks, indent=2, ensure_ascii=False),
                            encoding="utf-8")
 
     # --- Print a short report so we can check the result by eye ---
     sizes = [len(c["text"].split()) for c in chunks]
     print(f"Found {len(sections)} sections -> {len(chunks)} chunks "
-          f"(chunk size {CHUNK_SIZE} words, overlap {CHUNK_OVERLAP}).")
+          f"(chunk size {size} words, overlap {overlap}).")
     print(f"Chunk length in words: smallest {min(sizes)}, "
           f"largest {max(sizes)}, average {sum(sizes) // len(sizes)}.")
-    print(f"Saved to {OUTPUT_PATH}\n")
+    print(f"Saved to {output_path}\n")
 
     # Show three sample chunks: first, one from the middle, and the last.
     for c in [chunks[0], chunks[len(chunks) // 2], chunks[-1]]:

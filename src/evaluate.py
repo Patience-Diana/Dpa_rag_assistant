@@ -14,12 +14,16 @@ Part 2 (coming next): ANSWER evaluation with Claude, i.e. answer correctness
   and how often the assistant correctly says "I don't know".
 
 Run it from the project root with:
-    python src/evaluate.py
+    python src/evaluate.py                  # evaluate the 300-word chunks
+    python src/evaluate.py --sizes 300 150  # compare chunk sizes side by side
+(Each size must be built first with chunk.py --size N and index.py --size N.)
 """
 
+import argparse
 import csv
 from pathlib import Path
 
+from config import DEFAULT_CHUNK_SIZE
 from retrieve import retrieve
 
 QUESTIONS_PATH = Path("data/eval_questions.csv")
@@ -49,14 +53,14 @@ def first_hit_rank(retrieved_sections, expected_sections):
     return None
 
 
-def evaluate_retrieval(questions):
+def evaluate_retrieval(questions, chunk_size):
     """Run retrieval for every answerable question and record where the hit was."""
     results = []
     for q in questions:
         if q["type"] != "answerable":
             continue  # unanswerable questions have no "correct section" to find
 
-        chunks = retrieve(q["question"], top_k=MAX_K)
+        chunks = retrieve(q["question"], top_k=MAX_K, chunk_size=chunk_size)
         retrieved = [c["section_number"] for c in chunks]
         rank = first_hit_rank(retrieved, q["expected_sections"])
 
@@ -94,32 +98,45 @@ def save_results(results, filename):
     return path
 
 
-def main():
-    questions = load_questions()
-    print(f"Loaded {len(questions)} questions. Evaluating retrieval ...")
-
-    results = evaluate_retrieval(questions)
-    summary = summarise(results)
-    path = save_results(results, "retrieval_results.csv")
-
-    print(f"\n=== Retrieval results ({summary['n_questions']} answerable questions) ===")
-    print(f"  Hit rate @1: {summary['hit_at_1']:.0%}")
-    print(f"  Hit rate @3: {summary['hit_at_3']:.0%}   <- main metric")
-    print(f"  Hit rate @5: {summary['hit_at_5']:.0%}")
-
-    # Show the questions that did NOT get a correct section in the top 3,
-    # so we can look at why.
+def print_misses(results):
+    """Show the questions that did NOT get a correct section in the top 3."""
     misses = [r for r in results if not r["hit_at_3"]]
-    if misses:
-        print(f"\nMissed in top 3 ({len(misses)}):")
-        for r in misses:
-            where = f"found at rank {r['hit_rank']}" if r["hit_rank"] else "not in top 5"
-            print(f"  [{r['id']}] {r['question']}")
-            print(f"       expected {r['expected_sections']}, got {r['retrieved_sections']} ({where})")
-    else:
-        print("\nNo misses in the top 3.")
+    if not misses:
+        print("  No misses in the top 3.")
+        return
+    print(f"  Missed in top 3 ({len(misses)}):")
+    for r in misses:
+        where = f"found at rank {r['hit_rank']}" if r["hit_rank"] else "not in top 5"
+        print(f"    [{r['id']}] {r['question']}")
+        print(f"         expected {r['expected_sections']}, got {r['retrieved_sections']} ({where})")
 
-    print(f"\nPer-question details saved to {path}")
+
+def main():
+    parser = argparse.ArgumentParser(description="Evaluate retrieval.")
+    parser.add_argument("--sizes", type=int, nargs="+", default=[DEFAULT_CHUNK_SIZE],
+                        help="chunk sizes to evaluate, e.g. --sizes 300 150")
+    sizes = parser.parse_args().sizes
+
+    questions = load_questions()
+    print(f"Loaded {len(questions)} questions.")
+
+    summaries = {}
+    for size in sizes:
+        results = evaluate_retrieval(questions, size)
+        summaries[size] = summarise(results)
+        path = save_results(results, f"retrieval_results_{size}.csv")
+
+        print(f"\n=== {size}-word chunks ===")
+        print_misses(results)
+        print(f"  Details saved to {path}")
+
+    # A small comparison table: one row per chunk size.
+    n = summaries[sizes[0]]["n_questions"]
+    print(f"\n=== Retrieval hit rates ({n} answerable questions) ===")
+    print(f"{'Chunk size':>10} | {'@1':>5} | {'@3 (main)':>9} | {'@5':>5}")
+    print("-" * 40)
+    for size, s in summaries.items():
+        print(f"{size:>10} | {s['hit_at_1']:>5.0%} | {s['hit_at_3']:>9.0%} | {s['hit_at_5']:>5.0%}")
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ import sys
 import anthropic
 from dotenv import load_dotenv
 
+from config import DEFAULT_CHUNK_SIZE
 from retrieve import retrieve
 
 # Read ANTHROPIC_API_KEY from the .env file into the environment.
@@ -89,7 +90,7 @@ def find_cited_sections(answer_text):
     return sorted(cited, key=lambda s: int(re.match(r"\d+", s).group()))
 
 
-def answer(question, top_k=TOP_K):
+def answer(question, top_k=TOP_K, chunk_size=DEFAULT_CHUNK_SIZE):
     """
     Answer a question about the Act.
 
@@ -101,7 +102,7 @@ def answer(question, top_k=TOP_K):
       bad_citations    - cited sections that were NOT in the chunks we gave
                          (should always be empty; if not, Claude went off-script)
     """
-    chunks = retrieve(question, top_k=top_k)
+    chunks = retrieve(question, top_k=top_k, chunk_size=chunk_size)
 
     client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from the environment
 
